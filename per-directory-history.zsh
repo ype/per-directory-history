@@ -57,29 +57,46 @@
 #-------------------------------------------------------------------------------
 
 [[ -z $HISTORY_BASE ]] && HISTORY_BASE="$HOME/.directory_history"
-[[ -z $PER_DIRECTORY_HISTORY_TOGGLE ]] && PER_DIRECTORY_HISTORY_TOGGLE='^G'
+[[ -z $PER_DIRECTORY_HISTORY_TOGGLE ]] && PER_DIRECTORY_HISTORY_TOGGLE='^[d'
 
 #-------------------------------------------------------------------------------
-# toggle global/directory history used for searching - ctrl-G by default
+# toggle global/directory history used for searching - meta-D by default
 #-------------------------------------------------------------------------------
 
 function per-directory-history-toggle-history() {
-  if [[ $_per_directory_history_is_global == true ]]; then
-    _per-directory-history-set-directory-history
-    #print -n "\nusing local history"
-    export HISTSEARCH="L"
-  else
-    _per-directory-history-set-global-history
-    #print -n "\nusing global history"
-    export HISTSEARCH="G"
-  fi
-  zle .push-line
-  zle .accept-line
+    if [[ $_per_directory_history_is_global == true ]]; then
+        _per-directory-history-set-directory-history
+        #print -n "\nusing local history"
+        export HISTSEARCH="L"
+    else
+        _generate_zsh_global_history
+        _per-directory-history-set-global-history
+        #print -n "\nusing global history"
+        export HISTSEARCH="G"
+    fi
+    zle .push-line
+    zle .accept-line
 }
 
 autoload per-directory-history-toggle-history
 zle -N per-directory-history-toggle-history
 bindkey $PER_DIRECTORY_HISTORY_TOGGLE per-directory-history-toggle-history
+
+#-------------------------------------------------------------------------------
+# GLOBAL HISTORY HACK
+# BUG: records missing during from global history
+# HOTFIX: added function to generate global history from directory history
+#-------------------------------------------------------------------------------
+
+function _generate_zsh_global_history() {
+    find "$HISTORY_BASE" -type f -name 'history' \
+         > "$HISTORY_BASE/file_list.txt"
+
+    while read LINE; do
+	      sort -s -m -k1.1n "$LINE" \
+	           >> "$HISTFILE"
+    done < "$HISTORY_BASE/file_list.txt"
+}
 
 #-------------------------------------------------------------------------------
 # implementation details
@@ -88,57 +105,57 @@ bindkey $PER_DIRECTORY_HISTORY_TOGGLE per-directory-history-toggle-history
 _per_directory_history_directory="$HISTORY_BASE${PWD:A}/history"
 
 function _per-directory-history-change-directory() {
-  _per_directory_history_directory="$HISTORY_BASE${PWD:A}/history"
-  mkdir -p ${_per_directory_history_directory:h}
-  if [[ $_per_directory_history_is_global == false ]]; then
-    #save to the global history
-    fc -AI $HISTFILE
-    #save history to previous file
-    local prev="$HISTORY_BASE${OLDPWD:A}/history"
-    mkdir -p ${prev:h}
-    fc -AI $prev
+    _per_directory_history_directory="$HISTORY_BASE${PWD:A}/history"
+    mkdir -p ${_per_directory_history_directory:h}
+    if [[ $_per_directory_history_is_global == false ]]; then
+        #save to the global history
+        fc -AI $HISTFILE
+        #save history to previous file
+        local prev="$HISTORY_BASE${OLDPWD:A}/history"
+        mkdir -p ${prev:h}
+        fc -AI $prev
 
-    #discard previous directory's history
-    local original_histsize=$HISTSIZE
-    HISTSIZE=0
-    HISTSIZE=$original_histsize
+        #discard previous directory's history
+        local original_histsize=$HISTSIZE
+        HISTSIZE=0
+        HISTSIZE=$original_histsize
 
-    #read history in new file
-    if [[ -e $_per_directory_history_directory ]]; then
-      fc -R $_per_directory_history_directory
+        #read history in new file
+        if [[ -e $_per_directory_history_directory ]]; then
+            fc -R $_per_directory_history_directory
+        fi
     fi
-  fi
 }
 
 function _per-directory-history-addhistory() {
-  print -Sr -- "${1%%$'\n'}"
-  fc -p $_per_directory_history_directory
+    print -Sr -- "${1%%$'\n'}"
+    fc -p $_per_directory_history_directory
 }
 
 
 function _per-directory-history-set-directory-history() {
-  if [[ $_per_directory_history_is_global == true ]]; then
-    fc -AI $HISTFILE
-    local original_histsize=$HISTSIZE
-    HISTSIZE=0
-    HISTSIZE=$original_histsize
-    if [[ -e "$_per_directory_history_directory" ]]; then
-      fc -R "$_per_directory_history_directory"
+    if [[ $_per_directory_history_is_global == true ]]; then
+        fc -AI $HISTFILE
+        local original_histsize=$HISTSIZE
+        HISTSIZE=0
+        HISTSIZE=$original_histsize
+        if [[ -e "$_per_directory_history_directory" ]]; then
+            fc -R "$_per_directory_history_directory"
+        fi
     fi
-  fi
-  _per_directory_history_is_global=false
+    _per_directory_history_is_global=false
 }
 function _per-directory-history-set-global-history() {
-  if [[ $_per_directory_history_is_global == false ]]; then
-    fc -AI $_per_directory_history_directory
-    local original_histsize=$HISTSIZE
-    HISTSIZE=0
-    HISTSIZE=$original_histsize
-    if [[ -e "$HISTFILE" ]]; then
-      fc -R "$HISTFILE"
+    if [[ $_per_directory_history_is_global == false ]]; then
+        fc -AI $_per_directory_history_directory
+        local original_histsize=$HISTSIZE
+        HISTSIZE=0
+        HISTSIZE=$original_histsize
+        if [[ -e "$HISTFILE" ]]; then
+            fc -R "$HISTFILE"
+        fi
     fi
-  fi
-  _per_directory_history_is_global=true
+    _per_directory_history_is_global=true
 }
 
 
@@ -148,5 +165,6 @@ add-zsh-hook zshaddhistory _per-directory-history-addhistory
 
 #start in directory mode
 mkdir -p ${_per_directory_history_directory:h}
+export HISTSEARCH="G"
 _per_directory_history_is_global=true
-_per-directory-history-set-directory-history
+#_per-directory-history-set-directory-history
