@@ -60,6 +60,30 @@
 [[ -z $PER_DIRECTORY_HISTORY_TOGGLE ]] && PER_DIRECTORY_HISTORY_TOGGLE='^[d'
 
 #-------------------------------------------------------------------------------
+# GLOBAL HISTORY HACK
+# BUG: records missing during from global history
+# HOTFIX: added function to generate global history from directory history
+#-------------------------------------------------------------------------------
+
+function _generate_zsh_global_history() {
+    find "$HISTORY_BASE" -type f -name 'history' \
+         > "$HISTORY_BASE/file_list.txt"
+
+    while read -r LINE; do
+        [[ -d "$(echo $LINE | sed -r 's/\/home\/anton\/.zsh_hist|\/history//g')" ]] \
+            && stat -c '%Y %n' "$LINE"
+    done < "$HISTORY_BASE/file_list.txt" \
+        | sort -n \
+        | cut -d ' ' -f2 > "$HISTORY_BASE/file_list_parsed.txt"
+
+    while read LINE; do
+        if [[ -f "$LINE" ]]; then
+	          cat "$LINE" >> "$HISTFILE";
+        fi
+    done < "$HISTORY_BASE/file_list_parsed.txt"
+}
+
+#-------------------------------------------------------------------------------
 # toggle global/directory history used for searching - meta-D by default
 #-------------------------------------------------------------------------------
 
@@ -78,25 +102,10 @@ function per-directory-history-toggle-history() {
     zle .accept-line
 }
 
+_generate_zsh_global_history
 autoload per-directory-history-toggle-history
 zle -N per-directory-history-toggle-history
 bindkey $PER_DIRECTORY_HISTORY_TOGGLE per-directory-history-toggle-history
-
-#-------------------------------------------------------------------------------
-# GLOBAL HISTORY HACK
-# BUG: records missing during from global history
-# HOTFIX: added function to generate global history from directory history
-#-------------------------------------------------------------------------------
-
-function _generate_zsh_global_history() {
-    find "$HISTORY_BASE" -type f -name 'history' \
-         > "$HISTORY_BASE/file_list.txt"
-
-    while read LINE; do
-	      sort -s -m -k1.1n "$LINE" \
-	           >> "$HISTFILE"
-    done < "$HISTORY_BASE/file_list.txt"
-}
 
 #-------------------------------------------------------------------------------
 # implementation details
